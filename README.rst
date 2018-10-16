@@ -31,12 +31,40 @@ Set up the channel layer in your Django settings file like so::
 
 Possible options for ``CONFIG`` are listed below.
 
+.. _hosts:
+
 ``hosts``
 ~~~~~~~~~
 
 The server(s) to connect to, as either URIs, ``(host, port)`` tuples, or dicts conforming to `create_connection <https://aioredis.readthedocs.io/en/v1.1.0/api_reference.html#aioredis.create_connection>`_.
 Defaults to ``['localhost', 6379]``. Pass multiple hosts to enable sharding,
 but note that changing the host list will lose some sharded data.
+If sentinels_ parameter is also set then this setting has no effect.
+
+.. _sentinels:
+
+``sentinels``
+~~~~~~~~~~~~~~~~~~~
+
+Redis Sentinel configuration. Required parameters are **master** (name of Redis Sentinel master) and **sentinels** (list of sentinel nodes defined as a list of tuples (address, port)).
+Additional parameters like **db** can be also provided according to `create_sentinel_pool <https://aioredis.readthedocs.io/en/v1.1.0/sentinel.html#aioredis.sentinel.create_sentinel_pool>`_ parameters definition.
+
+.. code-block:: python
+
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels_redis.core.RedisChannelLayer",
+            "CONFIG": {
+                "sentinel": {
+                    "sentinels": [("127.0.0.1", 26379)],
+                    "master": "mymaster",
+                    "db": 1
+                    }
+            }
+        }
+    }
+
+
 
 ``prefix``
 ~~~~~~~~~~

@@ -10,6 +10,7 @@ import time
 import types
 
 import aioredis
+from aioredis import create_sentinel
 import msgpack
 
 from channels.exceptions import ChannelFull
@@ -126,6 +127,32 @@ class ConnectionPool:
             await conn.wait_closed()
 
 
+class SentinelConnectionPool(ConnectionPool):
+    """
+        Creates a pool of connections using sentinels
+    """
+    def __init__(self, sentinel):
+        super(SentinelConnectionPool, self).__init__("")
+        self.sentinel_master = sentinel.pop('master')
+        self.sentinels = sentinel.pop('sentinels')
+        self.sentinel_kwargs = sentinel
+
+    async def pop(self, loop=None):
+        """
+        Get a connection for the given identifier and loop.
+        """
+        conns, loop = self._ensure_loop(loop)
+        if not conns:
+            sentinel_pool = await create_sentinel(
+                self.sentinels,
+                loop=loop,
+                **self.sentinel_kwargs)
+            conns.append(sentinel_pool.master_for(self.sentinel_master))
+        conn = conns.pop()
+        self.in_use[conn] = loop
+        return conn
+
+
 class ChannelLock:
     """
     Helper class for per-channel locking.
@@ -186,11 +213,13 @@ class RedisChannelLayer(BaseChannelLayer):
         capacity=100,
         channel_capacity=None,
         symmetric_encryption_keys=None,
+        sentinel=None
     ):
         # Store basic information
         self.expiry = expiry
         self.group_expiry = group_expiry
         self.capacity = capacity
+        self.sentinel = sentinel
         self.channel_capacity = self.compile_capacities(channel_capacity or {})
         self.prefix = prefix
         assert isinstance(self.prefix, str), "Prefix must be unicode"
@@ -198,7 +227,13 @@ class RedisChannelLayer(BaseChannelLayer):
         self.hosts = self.decode_hosts(hosts)
         self.ring_size = len(self.hosts)
         # Cached redis connection pools and the event loop they are from
-        self.pools = [ConnectionPool(host) for host in self.hosts]
+        if self.sentinel:
+            self.pools = []
+            self.sentinel_pool = SentinelConnectionPool(self.sentinel)
+        else:
+            self.sentinel_pool = None
+            self.pools = [ConnectionPool(host) for host in self.hosts]
+
         # Normal channels choose a host index by cycling through the available hosts
         self._receive_index_generator = itertools.cycle(range(len(self.hosts)))
         self._send_index_generator = itertools.cycle(range(len(self.hosts)))
@@ -799,6 +834,8 @@ class RedisChannelLayer(BaseChannelLayer):
                 "There are only %s hosts - you asked for %s!" % (self.ring_size, index)
             )
         # Make a context manager
+        if self.sentinel:
+            return self.ConnectionContextManager(self.sentinel_pool)
         return self.ConnectionContextManager(self.pools[index])
 
     class ConnectionContextManager:
