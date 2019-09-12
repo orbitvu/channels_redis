@@ -29,11 +29,12 @@ setup(
     zip_safe=False,
     packages=find_packages(exclude=["tests"]),
     include_package_data=True,
+    python_requires=">=3.6",
     install_requires=[
         "aioredis~=1.0",
-        "msgpack~=0.5.2",
-        "asgiref~=2.1",
-        "channels~=2.0",
+        "msgpack~=0.6.0",
+        "asgiref~=3.0",
+        "channels~=2.2",
     ],
     extras_require={"cryptography": crypto_requires, "tests": test_requires},
 )
